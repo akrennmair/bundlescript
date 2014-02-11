@@ -37,6 +37,9 @@ func main() {
 
 	jsSources := []string{}
 
+	preserveClosingScriptTag := false
+	insideScript := false
+
 	for {
 		tokenType := tokenizer.Next()
 		if tokenType == html.ErrorToken {
@@ -46,18 +49,36 @@ func main() {
 		token := tokenizer.Token()
 
 		if token.Type == html.StartTagToken && token.Data == "script" {
-			if src := extractSource(token.Attr); src != "" {
-				jsSources = append(jsSources, src)
+			insideScript = true
+			if src, foundSrcAttribute := extractSource(token.Attr); foundSrcAttribute {
+				if src != "" {
+					jsSources = append(jsSources, src)
+				}
+			} else {
+				outbuf.WriteString(token.String())
+				preserveClosingScriptTag = true
 			}
 			continue
 		}
 		if token.Type == html.EndTagToken && token.Data == "script" {
-			// skip closing tag
+			insideScript = false
+			if preserveClosingScriptTag {
+				outbuf.WriteString(token.String())
+				preserveClosingScriptTag = false
+			}
 			continue
 		}
 		if token.Type == html.SelfClosingTagToken && token.Data == "script" {
-			if src := extractSource(token.Attr); src != "" {
-				jsSources = append(jsSources, src)
+			if src, foundSrcAttribute := extractSource(token.Attr); foundSrcAttribute {
+				if src != "" {
+					jsSources = append(jsSources, src)
+				}
+			}
+			continue
+		}
+		if token.Type == html.TextToken && insideScript {
+			if preserveClosingScriptTag {
+				outbuf.WriteString(token.String())
 			}
 			continue
 		}
@@ -103,13 +124,13 @@ func main() {
 	}
 }
 
-func extractSource(attr []html.Attribute) string {
+func extractSource(attr []html.Attribute) (src string, foundSrc bool) {
 	for _, a := range attr {
 		if a.Namespace == "" && a.Key == "src" {
-			return a.Val
+			return a.Val, true
 		}
 	}
-	return ""
+	return "", false
 }
 
 func mergeJsSources(htdocs, jsOutput string, jsSources []string) error {
