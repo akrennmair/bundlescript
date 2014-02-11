@@ -14,6 +14,8 @@ This will read the file `/path/to/your/htdocs/index.html`, bundle all its JavaSc
 to a single file, and write to resulting HTML and JavaScript files to `/path/to/your/htdocs/index-new.html`
 resp. `/path/to/your/htdocs/js/bundle.js`.
 
+The HTML input file and output file can be the same.
+
 License
 -------
 
