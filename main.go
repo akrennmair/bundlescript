@@ -50,7 +50,10 @@ func main() {
 
 		if token.Type == html.StartTagToken && token.Data == "script" {
 			insideScript = true
-			if src, foundSrcAttribute := extractSource(token.Attr); foundSrcAttribute {
+			if ignoreScriptTag(token.Attr) {
+				preserveClosingScriptTag = true
+				outbuf.WriteString(token.String())
+			} else if src, foundSrcAttribute := extractSource(token.Attr); foundSrcAttribute {
 				if src != "" {
 					jsSources = append(jsSources, src)
 				}
@@ -69,7 +72,9 @@ func main() {
 			continue
 		}
 		if token.Type == html.SelfClosingTagToken && token.Data == "script" {
-			if src, foundSrcAttribute := extractSource(token.Attr); foundSrcAttribute {
+			if ignoreScriptTag(token.Attr) {
+				outbuf.WriteString(token.String())
+			} else if src, foundSrcAttribute := extractSource(token.Attr); foundSrcAttribute {
 				if src != "" {
 					jsSources = append(jsSources, src)
 				}
@@ -122,6 +127,15 @@ func main() {
 		defer f.Close()
 		io.Copy(f, outbuf)
 	}
+}
+
+func ignoreScriptTag(attr []html.Attribute) bool {
+	for _, a := range attr {
+		if a.Namespace == "" && a.Key == "data-bundlescript" && a.Val == "ignore" {
+			return true
+		}
+	}
+	return false
 }
 
 func extractSource(attr []html.Attribute) (src string, foundSrc bool) {
