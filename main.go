@@ -129,6 +129,15 @@ func main() {
 				Data: "\n",
 			}
 			outbuf.WriteString(linebreakToken.String())
+
+			commentToken := &html.Token{
+				Type: html.CommentToken,
+				Data: " JS source files bundled with bundlescript: https://github.com/akrennmair/bundlescript ",
+			}
+
+			outbuf.WriteString(commentToken.String())
+
+			outbuf.WriteString(linebreakToken.String())
 		}
 		outbuf.WriteString(token.String())
 	}
