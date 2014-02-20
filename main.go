@@ -11,8 +11,17 @@ import (
 	"strings"
 )
 
+var verbose bool = false
+
+func Logf(format string, args ...interface{}) {
+	if verbose {
+		fmt.Fprintf(os.Stderr, format+"\n", args...)
+	}
+}
+
 func main() {
 	options := struct {
+		Verbose    bool   `goptions:"-v, --verbose, description='Log what bundlescript is currently doing'"`
 		Htdocs     string `goptions:"--htdocs, description='htdocs directory', obligatory"`
 		HtmlOutput string `goptions:"--htmlout, description='HTML output file (relative to htdocs; if \"-\" then stdout will be used)', obligatory"`
 		JsOutput   string `goptions:"--jsout, description='JavaScript output file (relative to htdocs)', obligatory"`
@@ -20,6 +29,8 @@ func main() {
 	}{}
 
 	goptions.ParseAndFail(&options)
+
+	verbose = options.Verbose
 
 	outbuf := &bytes.Buffer{}
 
@@ -30,8 +41,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Couldn't open input file: %v\n", err)
 			os.Exit(1)
 		} else {
+			Logf("Reading HTML file %s.", options.HtmlInput)
 			inputStream = inf
 		}
+	} else {
+		Logf("Reading HTML from stdin.")
 	}
 
 	tokenizer := html.NewTokenizer(inputStream)
@@ -56,6 +70,7 @@ func main() {
 				outbuf.WriteString(token.String())
 			} else if src, foundSrcAttribute := extractSource(token.Attr); foundSrcAttribute {
 				if src != "" {
+					Logf("Found JS source file to merge: %s", src)
 					jsSources = append(jsSources, src)
 				}
 			} else {
@@ -77,6 +92,7 @@ func main() {
 				outbuf.WriteString(token.String())
 			} else if src, foundSrcAttribute := extractSource(token.Attr); foundSrcAttribute {
 				if src != "" {
+					Logf("Found JS source file to merge: %s", src)
 					jsSources = append(jsSources, src)
 				}
 			}
@@ -126,8 +142,11 @@ func main() {
 			os.Exit(1)
 		}
 		defer f.Close()
+		Logf("Writing HTML output to %s.", options.HtmlOutput)
 		io.Copy(f, outbuf)
 	}
+
+	Logf("Done.")
 }
 
 func ignoreScriptTag(attr []html.Attribute) bool {
@@ -152,10 +171,12 @@ func extractSource(attr []html.Attribute) (src string, foundSrc bool) {
 }
 
 func mergeJsSources(htdocs, jsOutput string, jsSources []string) error {
+	Logf("Merging JS sources...")
 	outf, err := os.OpenFile(path.Join(htdocs, jsOutput), os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
+	Logf("Writing JS output to %s", jsOutput)
 	defer outf.Close()
 
 	for _, input := range jsSources {
@@ -164,9 +185,11 @@ func mergeJsSources(htdocs, jsOutput string, jsSources []string) error {
 			return err
 		}
 		defer inf.Close()
-
+		Logf("Merging %s", input)
 		io.Copy(outf, inf)
 	}
+
+	Logf("Finished with merging.")
 
 	return nil
 }
