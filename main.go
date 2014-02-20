@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 )
 
 func main() {
@@ -132,6 +133,9 @@ func main() {
 func ignoreScriptTag(attr []html.Attribute) bool {
 	for _, a := range attr {
 		if a.Namespace == "" && a.Key == "data-bundlescript" && a.Val == "ignore" {
+			return true
+		}
+		if a.Namespace == "" && a.Key == "src" && (strings.HasPrefix(a.Val, "//") || strings.HasPrefix(a.Val, "http://") || strings.HasPrefix(a.Val, "https://")) {
 			return true
 		}
 	}
