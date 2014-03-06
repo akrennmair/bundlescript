@@ -7,6 +7,7 @@ import (
 	"github.com/voxelbrain/goptions"
 	"io"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 )
@@ -26,6 +27,7 @@ func main() {
 		HtmlOutput string `goptions:"--htmlout, description='HTML output file (relative to htdocs; if \"-\" then stdout will be used)', obligatory"`
 		JsOutput   string `goptions:"--jsout, description='JavaScript output file (relative to htdocs)', obligatory"`
 		HtmlInput  string `goptions:"--htmlin, description='HTML input file (relative to htdocs; if \"-\" then stdin will be used)', obligatory"`
+		Uglify     bool   `goptions:"--uglify, description='Run JavaScript output through uglifyjs.'"`
 	}{}
 
 	goptions.ParseAndFail(&options)
@@ -105,9 +107,9 @@ func main() {
 			continue
 		}
 		if token.Type == html.EndTagToken && token.Data == "html" {
-			err := mergeJsSources(options.Htdocs, options.JsOutput, jsSources)
+			err := mergeJsSources(options.Htdocs, options.JsOutput, jsSources, options.Uglify)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Couldn't merge JavaScript sources: %v", err)
+				fmt.Fprintf(os.Stderr, "Couldn't merge JavaScript sources: %v\n", err)
 				os.Exit(1)
 			}
 
@@ -179,14 +181,46 @@ func extractSource(attr []html.Attribute) (src string, foundSrc bool) {
 	return "", false
 }
 
-func mergeJsSources(htdocs, jsOutput string, jsSources []string) error {
+func mergeJsSources(htdocs, jsOutput string, jsSources []string, uglify bool) error {
+	var (
+		outf io.WriteCloser
+		err  error
+	)
+
 	Logf("Merging JS sources...")
-	outf, err := os.OpenFile(path.Join(htdocs, jsOutput), os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
+	outf, err = os.OpenFile(path.Join(htdocs, jsOutput), os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
 	Logf("Writing JS output to %s", jsOutput)
-	defer outf.Close()
+	defer func(f io.Closer) {
+		f.Close()
+	}(outf)
+
+	var uglifyCmd *exec.Cmd
+	if uglify {
+		uglifyCmd = exec.Command("uglifyjs", "-c", "-m")
+		uglifyStdout, err := uglifyCmd.StdoutPipe()
+		if err != nil {
+			return err
+		}
+
+		go func(f io.WriteCloser) {
+			io.Copy(f, uglifyStdout)
+		}(outf)
+
+		uglifyStdin, err := uglifyCmd.StdinPipe()
+		if err != nil {
+			return err
+		}
+
+		outf = uglifyStdin
+
+		if err = uglifyCmd.Start(); err != nil {
+			Logf("Running uglifyjs failed: %v", err)
+			return err
+		}
+	}
 
 	for _, input := range jsSources {
 		inf, err := os.Open(path.Join(htdocs, input))
@@ -196,6 +230,12 @@ func mergeJsSources(htdocs, jsOutput string, jsSources []string) error {
 		defer inf.Close()
 		Logf("Merging %s", input)
 		io.Copy(outf, inf)
+	}
+
+	if uglify && uglifyCmd != nil {
+		outf.Close()
+		Logf("Waiting for uglifyjs to finish.")
+		uglifyCmd.Wait()
 	}
 
 	Logf("Finished with merging.")
